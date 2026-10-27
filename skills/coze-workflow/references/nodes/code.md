@@ -1,9 +1,11 @@
 ## coze.cn Cloud YAML Format
 
-YAML type: `code` | Status: 未验证
+YAML type: `code` | Status: YAML shape unverified; runtime constraints verified (2026-10-26)
 
-> This node type's cloud YAML format is based on source code analysis.
-> For verified format, export a real workflow from coze.cn containing this node.
+> The cloud YAML shape below is based on source code analysis.
+> For a verified YAML shape, export a real workflow from coze.cn containing this node.
+> Runtime and sandbox constraints are verified against the official docs; see
+> "Runtime & Sandbox Constraints" below.
 
 ```yaml
     - id: "200001"
@@ -32,6 +34,49 @@ YAML type: `code` | Status: 未验证
 
 ## Purpose
 Executes user-written code (Python or JavaScript/TypeScript) with defined input parameters and structured output variables.
+
+## Runtime & Sandbox Constraints (coze.cn)
+
+> Verified against the official Coze docs on 2026-10-26:
+> https://docs.coze.cn/guides_code_node
+>
+> This section documents the runtime; the cloud YAML shape above is still
+> unverified. Do not treat the YAML example as a confirmed export.
+
+| Item | Python | JavaScript / TypeScript |
+|---|---|---|
+| Runtime | CPython **3.11.3** standard library | V8 **11.3.244.8** (Node.js **20.3.1**), ECMAScript 2022 |
+| Allowed third-party deps | `requests_async`, `numpy` only | `dayjs` **1.8.36**, `lodash` **4.17.20** only |
+| Network | HTTP/HTTPS only; `http.client` unsupported; use `requests_async` | HTTP/HTTPS only |
+| Node timeout | 60s default, configurable 0.1s-60s | same |
+| Retry | 0 or 1 | same |
+| Code nodes per workflow | max **50** | same |
+| Function limit | **one function only**; must return an object | same |
+| Sleep | prefer `asyncio.sleep()`; `time.sleep()` blocks and may trigger throttling; max delay 1 minute | use `setTimeout` / async APIs |
+| Error outputs | `isSuccess`, `errorBody` when using fallback / exception branch | same |
+
+### JavaScript runtime
+
+- V8 11.3.244.8 / Node.js 20.3.1, ECMAScript 2022.
+- Only `dayjs` and `lodash` are available as third-party modules.
+- WinterCG-style Web APIs include `atob`, `btoa`, `console`, `setTimeout`,
+  `clearTimeout`, `structuredClone`, `URL`, `URLSearchParams`,
+  `AbortController`, `AbortSignal`, `TextEncoder`, `TextDecoder`, `WebStreams`,
+  and `WebCrypto` (AES/HMAC/SHA only).
+
+### Behavior notes
+
+- The platform explicitly says **do not write multiple functions**; even a
+  single output must be returned as an object.
+- The code-node service was upgraded on 2025-09-16. Run the node before
+  publishing; do not publish untested code.
+- Official docs do not state memory, CPU, filesystem, environment-variable, or
+  output-size limits. Treat those as unknown and probe them if needed.
+
+### Sources
+
+- https://docs.coze.cn/guides_code_node
+- https://docs.coze.cn/api/open/docs/guides/code_node
 
 ## Core Fields
 | Field | Type | Required | Description |
@@ -174,9 +219,10 @@ async function main({ params }: Args): Promise<Output> {
 
 ### Python Import Validation
 The backend validates Python imports at build time:
-- **Allowed**: Python standard library modules (except blacklisted ones) and whitelisted third-party modules.
+- **Allowed**: Python 3.11.3 standard library modules, except the blacklist below.
 - **Blacklisted standard library modules**: `curses`, `dbm`, `ensurepip`, `fcntl`, `grp`, `idlelib`, `lib2to3`, `msvcrt`, `pwd`, `resource`, `syslog`, `termios`, `tkinter`, `turtle`, `turtledemo`, `venv`, `winreg`, `winsound`, `multiprocessing`, `threading`, `socket`, `pty`, `tty`.
-- **Third-party modules**: Only modules in the configured whitelist are allowed.
+- **Third-party modules**: only `requests_async` and `numpy` are available. Other third-party imports are not supported.
+- **HTTP client**: `http.client` is explicitly unsupported; use `requests_async`. Because `urllib.request` depends on `http.client`, treat it as unavailable unless verified in the current runtime.
 
 ## Node Registry Metadata
 | Property | Value |
